@@ -63,9 +63,25 @@ export interface DatabaseInterface {
   updateServicePricing(serviceCode: string, updates: Partial<ServicePricingData>): Promise<ServicePricing>;
   deleteServicePricing(serviceCode: string): Promise<void>;
 
+  // Atomic Transaction Support
+  transaction<T>(callback: (tx: DatabaseTransactionInterface) => Promise<T>): Promise<T>;
+
   // Health check
   healthCheck(): Promise<boolean>;
   initialize(): Promise<void>;
+}
+
+export interface DatabaseTransactionInterface {
+  // Customer operations within transaction
+  createCustomer(customer: CustomerData): Promise<Customer>;
+  getCustomer(customerId: string): Promise<Customer | null>;
+  updateCustomer(customerId: string, updates: Partial<CustomerData>): Promise<Customer>;
+
+  // Wallet Transaction operations within transaction
+  createWalletTransaction(transaction: WalletTransactionData): Promise<WalletTransaction>;
+  getWalletTransaction(transactionId: string): Promise<WalletTransaction | null>;
+  getWalletTransactionByReference(reference: string): Promise<WalletTransaction | null>;
+  updateWalletTransactionStatus(transactionId: string, status: WalletTransactionStatus, completedAt?: Date): Promise<WalletTransaction>;
 }
 
 // Data interfaces
@@ -152,7 +168,7 @@ export interface CustomerData {
   company?: string;
   walletBalance: number; // Pay-as-you-go wallet balance in kobo
   status: 'active' | 'suspended' | 'cancelled';
-  stripeCustomerId?: string; // For payment processing
+  paystackCustomerId?: string; // For payment processing (optional)
   passwordHash?: string; // FIXED: Add password hash to persistent storage
   resetTokenHash?: string; // Password reset token hash
   resetTokenExpires?: Date; // Password reset token expiry

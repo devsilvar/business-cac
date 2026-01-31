@@ -61,10 +61,10 @@ export function registerDashboardRoutes(router: Router) {
    *   }
    * }
    */
-  router.get(
+router.get(
     '/overview',
     requireAdminAuth,
-    requireAdminPermission('view_all'),
+    requireAdminPermission('view_dashboard'),
     async (req: Request, res: Response) => {
       try {
         // Get real business overview data from CustomerService
@@ -164,10 +164,10 @@ export function registerDashboardRoutes(router: Router) {
    *   }
    * }
    */
-  router.get(
+router.get(
     '/usage/overview',
     requireAdminAuth,
-    requireAdminPermission('view_all'),
+    requireAdminPermission('view_usage_analytics'),
     async (req: Request, res: Response) => {
       try {
         const range = (req.query.range as string) || '30d';
@@ -301,15 +301,15 @@ export function registerDashboardRoutes(router: Router) {
    *     "services": {
    *       "database": "connected",
    *       "documentsApi": "healthy",
-   *       "stripe": "healthy"
+   *       "paystack": "healthy"
    *     }
    *   }
    * }
    */
-  router.get(
+router.get(
     '/system-status',
     requireAdminAuth,
-    requireAdminPermission('view_all'),
+    requireAdminPermission('view_system_metrics'),
     async (req: Request, res: Response) => {
       try {
         const systemStatus = {
@@ -322,7 +322,7 @@ export function registerDashboardRoutes(router: Router) {
           services: {
             database: 'connected', // TODO: Check actual database connection
             documentsApi: 'unknown', // TODO: Check Documents.com.ng API health
-            stripe: 'unknown' // TODO: Check Stripe API health
+            paystack: 'unknown' // TODO: Check Paystack API health
           }
         };
 
@@ -372,10 +372,10 @@ export function registerDashboardRoutes(router: Router) {
    *   }
    * }
    */
-  router.get(
+router.get(
     '/metrics',
     requireAdminAuth,
-    requireAdminPermission('view_all'),
+    requireAdminPermission('view_usage_analytics'),
     async (req: Request, res: Response) => {
       try {
         const metrics = await CustomerService.getBusinessMetrics();

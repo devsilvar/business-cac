@@ -24,7 +24,8 @@ export class InsufficientBalanceError extends Error {
 
   constructor(requiredAmount: number, currentBalance: number) {
     const shortfall = requiredAmount - currentBalance;
-    super(`Insufficient balance. Required: ₦${requiredAmount / 100}, Available: ₦${currentBalance / 100}, Shortfall: ₦${shortfall / 100}`);
+    // Internal message for logging - sanitizer will replace with user-friendly message
+    super(`Insufficient wallet balance for transaction`);
     this.name = 'InsufficientBalanceError';
     this.requiredAmount = requiredAmount;
     this.currentBalance = currentBalance;
@@ -33,16 +34,24 @@ export class InsufficientBalanceError extends Error {
 }
 
 export class WalletNotFoundError extends Error {
+  public readonly customerId: string;
+
   constructor(customerId: string) {
-    super(`Wallet not found for customer: ${customerId}`);
+    // Internal message - sanitizer will replace with user-friendly message
+    super(`Wallet not found`);
     this.name = 'WalletNotFoundError';
+    this.customerId = customerId;
   }
 }
 
 export class DuplicateTransactionError extends Error {
+  public readonly reference: string;
+
   constructor(reference: string) {
-    super(`Transaction with reference already exists: ${reference}`);
+    // Internal message - sanitizer will replace with user-friendly message
+    super(`Duplicate transaction detected`);
     this.name = 'DuplicateTransactionError';
+    this.reference = reference;
   }
 }
 
@@ -278,15 +287,21 @@ export class WalletService {
     // Get original transaction
     const originalTxn = await database.getWalletTransaction(originalTransactionId);
     if (!originalTxn) {
-      throw new Error(`Original transaction not found: ${originalTransactionId}`);
+      const error = new Error('Transaction not found');
+      error.name = 'TransactionNotFoundError';
+      throw error;
     }
 
     if (originalTxn.type !== 'debit') {
-      throw new Error('Can only refund debit transactions');
+      const error = new Error('Invalid transaction type for refund');
+      error.name = 'InvalidTransactionError';
+      throw error;
     }
 
     if (originalTxn.status === 'reversed') {
-      throw new Error('Transaction has already been refunded');
+      const error = new Error('Transaction already refunded');
+      error.name = 'DuplicateRefundError';
+      throw error;
     }
 
     // Credit the customer
@@ -447,11 +462,15 @@ export class WalletService {
   static async completeReservation(transactionId: string): Promise<DebitResult> {
     const transaction = await database.getWalletTransaction(transactionId);
     if (!transaction) {
-      throw new Error(`Transaction not found: ${transactionId}`);
+      const error = new Error('Transaction not found');
+      error.name = 'TransactionNotFoundError';
+      throw error;
     }
 
     if (transaction.status !== 'pending') {
-      throw new Error(`Transaction is not pending: ${transaction.status}`);
+      const error = new Error('Transaction is not in pending status');
+      error.name = 'InvalidTransactionStatusError';
+      throw error;
     }
 
     // Update customer balance
@@ -479,11 +498,15 @@ export class WalletService {
   static async cancelReservation(transactionId: string): Promise<void> {
     const transaction = await database.getWalletTransaction(transactionId);
     if (!transaction) {
-      throw new Error(`Transaction not found: ${transactionId}`);
+      const error = new Error('Transaction not found');
+      error.name = 'TransactionNotFoundError';
+      throw error;
     }
 
     if (transaction.status !== 'pending') {
-      throw new Error(`Transaction is not pending: ${transaction.status}`);
+      const error = new Error('Transaction is not in pending status');
+      error.name = 'InvalidTransactionStatusError';
+      throw error;
     }
 
     // Mark transaction as failed (balance was never deducted)

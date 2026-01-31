@@ -15,7 +15,7 @@ const router = Router();
 router.get(
   '/verification/queue',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_verification_requests'),
   async (req: Request, res: Response) => {
     try {
       const { customers } = await database.listCustomers({});
@@ -64,7 +64,7 @@ router.get(
 router.get(
   '/verification/list',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_verification_requests'),
   async (req: Request, res: Response) => {
     try {
       const status = String(req.query.status || 'all');
@@ -118,7 +118,7 @@ router.get(
 router.get(
   '/verification/:customerId',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_verification_requests'),
   async (req: Request, res: Response) => {
     try {
       const customer = await database.getCustomer(req.params.customerId);
@@ -162,7 +162,7 @@ router.get(
 router.post(
   '/verification/:customerId/approve',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('approve_verifications'),
   async (req: Request, res: Response) => {
     try {
       const customerId = req.params.customerId;
@@ -214,7 +214,7 @@ router.post(
 router.post(
   '/verification/:customerId/reject',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('reject_verifications'),
   async (req: Request, res: Response) => {
     try {
       const customerId = req.params.customerId;
@@ -256,7 +256,7 @@ router.post(
 router.get(
   '/verification/:customerId/document/:documentIndex',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_verification_requests'),
   async (req: Request, res: Response) => {
     try {
       const customerId = req.params.customerId;
@@ -299,7 +299,7 @@ router.get(
 router.get(
   '/verification/stats',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_verification_requests'),
   async (req: Request, res: Response) => {
     try {
       const { customers } = await database.listCustomers({});

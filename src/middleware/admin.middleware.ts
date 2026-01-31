@@ -27,13 +27,21 @@ interface AdminJWTPayload {
 }
 
 // Admin configuration (super admin seeded from environment variables)
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@yourcompany.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123!CHANGE_THIS';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 
-const DEFAULT_PERMISSIONS = ['view_all', 'manage_customers', 'manage_billing', 'manage_system'];
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error('CRITICAL SECURITY ERROR: ADMIN_EMAIL and ADMIN_PASSWORD must be set in environment variables. Check your .env file.')
+}
+
+// Import comprehensive permission system
+import { DEFAULT_PERMISSIONS, AVAILABLE_PERMISSIONS } from '../routes/admin/admin.routes.js';
 
 // TODO(rovodev): move JWT secret & expiry to a single shared util; enforce standard claims (iss, aud)
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-admin-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set. Add it to your .env file.')
+}
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 
 /**
@@ -47,18 +55,18 @@ export const initializeAdminUser = async (): Promise<void> => {
     if (existing) return;
 
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
-    await database.createAdmin({
+await database.createAdmin({
       email: ADMIN_EMAIL.toLowerCase(),
       passwordHash,
       role: 'super_admin',
-      permissions: DEFAULT_PERMISSIONS,
+      permissions: DEFAULT_PERMISSIONS.super_admin,
       status: 'active'
     });
 
     const logLevel = process.env.LOG_LEVEL?.toLowerCase();
     if (logLevel === 'info' || logLevel === 'debug') {
       console.log(`[ADMIN] Super admin seeded: ${ADMIN_EMAIL}`);
-      console.log(`[ADMIN] Default password: ${ADMIN_PASSWORD}`);
+      // Password logging removed for security - check your .env file for ADMIN_PASSWORD
       console.log('[ADMIN] WARNING: CHANGE THIS PASSWORD IMMEDIATELY IN PRODUCTION!');
     }
   } catch (error) {
@@ -214,27 +222,62 @@ export const requireAdminAuth = async (req: Request, res: Response, next: NextFu
 /**
  * Check admin permissions middleware
  */
-export const requireAdminPermission = (permission: string) => {
+export const requireAdminPermission = (permission: string | string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.admin) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'ADMIN_NOT_AUTHENTICATED',
-          message: 'Admin authentication required'
-        }
-      });
+      http.unauthorized(res, 'ADMIN_NOT_AUTHENTICATED', 'Admin authentication required', undefined, req);
       return;
     }
 
-    if (!req.admin.permissions.includes(permission) && !req.admin.permissions.includes('view_all')) {
-      res.status(403).json({
-        success: false,
-        error: {
-          code: 'INSUFFICIENT_ADMIN_PERMISSIONS',
-          message: `Admin permission required: ${permission}`
-        }
-      });
+    const permissions = Array.isArray(permission) ? permission : [permission];
+    
+    // Super admins have access to everything
+    if (req.admin.role === 'super_admin') {
+      next();
+      return;
+    }
+
+    // Check if admin has any of the required permissions
+    const hasPermission = permissions.some(p => req.admin!.permissions.includes(p));
+    
+    if (!hasPermission) {
+      http.forbidden(res, 'INSUFFICIENT_ADMIN_PERMISSIONS', `Admin permission required: ${permissions.join(' OR ')}`, undefined, req);
+      return;
+    }
+
+    next();
+  };
+};
+
+/**
+ * Check if admin has ANY of the specified permissions
+ */
+export const requireAnyAdminPermission = (permissions: string[]) => {
+  return requireAdminPermission(permissions);
+};
+
+/**
+ * Check if admin has ALL of the specified permissions
+ */
+export const requireAllAdminPermissions = (permissions: string[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.admin) {
+      http.unauthorized(res, 'ADMIN_NOT_AUTHENTICATED', 'Admin authentication required', undefined, req);
+      return;
+    }
+
+    // Super admins have access to everything
+    if (req.admin.role === 'super_admin') {
+      next();
+      return;
+    }
+
+    // Check if admin has all required permissions
+    const hasAllPermissions = permissions.every(p => req.admin!.permissions.includes(p));
+    
+    if (!hasAllPermissions) {
+      const missingPermissions = permissions.filter(p => !req.admin!.permissions.includes(p));
+      http.forbidden(res, 'INSUFFICIENT_ADMIN_PERMISSIONS', `Admin permissions required: ${missingPermissions.join(', ')}`, undefined, req);
       return;
     }
 

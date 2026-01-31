@@ -37,7 +37,7 @@ const router = Router();
 router.get(
   '/',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const activeOnly = req.query.activeOnly === 'true';
     const pricing = await PricingService.listPricing(activeOnly);
@@ -76,7 +76,7 @@ router.get(
 router.get(
   '/:code',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const { code } = req.params;
     const pricing = await PricingService.getPrice(code);
@@ -121,7 +121,7 @@ router.get(
 router.post(
   '/',
   requireAdminAuth,
-  requireAdminPermission('manage_system'),
+  requireAdminPermission('edit_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const { serviceCode, serviceName, priceKobo, priceNaira, description, isActive } = req.body;
 
@@ -202,7 +202,7 @@ router.post(
 router.put(
   '/:code',
   requireAdminAuth,
-  requireAdminPermission('manage_system'),
+  requireAdminPermission('edit_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const { code } = req.params;
     const { serviceName, priceKobo, priceNaira, description, isActive } = req.body;
@@ -293,7 +293,7 @@ router.put(
 router.delete(
   '/:code',
   requireAdminAuth,
-  requireAdminPermission('manage_system'),
+  requireAdminPermission('edit_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const { code } = req.params;
 
@@ -341,7 +341,7 @@ router.delete(
 router.post(
   '/seed',
   requireAdminAuth,
-  requireAdminPermission('manage_system'),
+  requireAdminPermission('edit_pricing'),
   asyncHandler(async (req: Request, res: Response) => {
     const { created, skipped } = await PricingService.seedDefaultPricing();
 

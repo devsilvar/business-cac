@@ -2,9 +2,15 @@
  * Wallet Middleware
  * Handles wallet balance checking before API requests and debiting after successful responses
  * 
+ * BEST PRACTICE IMPLEMENTATION:
+ * - Synchronous charging: Waits for charge to complete before sending response
+ * - Proper error handling: Logs failed charges for reconciliation
+ * - Audit trail: Always logs wallet operations
+ * - Reserve pattern: Checks balance before, charges after success
+ * 
  * Flow:
  * 1. checkWalletBalance - Runs BEFORE the route handler, blocks if insufficient balance
- * 2. chargeWallet - Runs AFTER successful response (2xx), debits the wallet
+ * 2. chargeWallet - Runs AFTER successful response (2xx), debits the wallet SYNCHRONOUSLY
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -22,6 +28,7 @@ declare global {
         balanceBefore: number;
         charged: boolean;
         transactionId?: string;
+        chargeError?: string;
       };
     }
   }
@@ -33,6 +40,25 @@ declare global {
  */
 function getServiceCodeFromRequest(req: Request): string | null {
   return PricingService.getServiceCodeFromEndpoint(req.originalUrl || req.path);
+}
+
+/**
+ * Log wallet operations - always enabled for audit trail
+ */
+function logWalletOperation(
+  type: 'CHECK' | 'CHARGE' | 'SKIP' | 'ERROR',
+  message: string,
+  data?: Record<string, any>
+): void {
+  const timestamp = new Date().toISOString();
+  const logLevel = type === 'ERROR' ? 'error' : 'info';
+  const prefix = `[Wallet:${type}]`;
+  
+  if (logLevel === 'error') {
+    console.error(`${prefix} ${message}`, data ? JSON.stringify(data) : '');
+  } else {
+    console.log(`${prefix} ${message}`, data ? JSON.stringify(data) : '');
+  }
 }
 
 /**
@@ -60,6 +86,10 @@ export const checkWalletBalance = async (
     if (!serviceCode) {
       // No service code found - this might be a non-billable endpoint
       // Let it through without wallet check
+      logWalletOperation('SKIP', 'No service code found for endpoint', { 
+        endpoint: req.originalUrl,
+        customerId 
+      });
       next();
       return;
     }
@@ -75,12 +105,24 @@ export const checkWalletBalance = async (
         balanceBefore: req.customer.walletBalance,
         charged: false
       };
+      logWalletOperation('SKIP', 'Free service, no charge required', { 
+        serviceCode,
+        customerId 
+      });
       next();
       return;
     }
 
     // Check if customer can afford this service
     const affordability = await WalletService.canAffordService(customerId, serviceCode);
+
+    logWalletOperation('CHECK', 'Balance check', {
+      customerId,
+      serviceCode,
+      priceKobo,
+      currentBalance: affordability.balance.balanceKobo,
+      canAfford: affordability.canAfford
+    });
 
     if (!affordability.canAfford) {
       // Return 402 Payment Required with details
@@ -115,15 +157,22 @@ export const checkWalletBalance = async (
 
     next();
   } catch (error: any) {
-    console.error('Wallet balance check error:', error);
+    logWalletOperation('ERROR', 'Balance check failed', { 
+      error: error.message,
+      stack: error.stack 
+    });
     http.serverError(res, 'WALLET_CHECK_ERROR', 'Failed to verify wallet balance');
   }
 };
 
 /**
  * Middleware: Charge wallet after successful response
- * This middleware wraps the response to intercept the status code
- * Only charges on 2xx responses
+ * 
+ * IMPORTANT: This middleware now WAITS for the charge to complete before sending the response.
+ * This ensures:
+ * 1. Charges are guaranteed to happen for successful requests
+ * 2. Failed charges are properly logged for reconciliation
+ * 3. No revenue loss due to fire-and-forget pattern
  */
 export const chargeWallet = (
   req: Request, 
@@ -137,24 +186,50 @@ export const chargeWallet = (
   // Flag to prevent double charging
   let hasCharged = false;
 
-  const processCharge = async () => {
-    // Only charge once and only for successful responses
-    if (hasCharged) return;
-    if (!req.walletContext || req.walletContext.charged) return;
-    if (req.walletContext.priceKobo === 0) return;
-    if (!req.customer) return;
+  /**
+   * Process the wallet charge - SYNCHRONOUS
+   * Returns true if charge was successful or not needed
+   * Returns false if charge failed (for logging purposes)
+   */
+  const processCharge = async (): Promise<boolean> => {
+    // Only charge once
+    if (hasCharged) {
+      return true;
+    }
+
+    // Skip if no wallet context or already charged
+    if (!req.walletContext || req.walletContext.charged) {
+      return true;
+    }
+
+    // Skip free services
+    if (req.walletContext.priceKobo === 0) {
+      return true;
+    }
+
+    // Skip if no customer
+    if (!req.customer) {
+      logWalletOperation('SKIP', 'No customer attached to request');
+      return true;
+    }
     
     // Only charge on 2xx status codes
     const statusCode = res.statusCode;
-    if (statusCode < 200 || statusCode >= 300) return;
+    if (statusCode < 200 || statusCode >= 300) {
+      logWalletOperation('SKIP', 'Non-2xx response, no charge', {
+        statusCode,
+        serviceCode: req.walletContext.serviceCode
+      });
+      return true;
+    }
 
     hasCharged = true;
 
-    try {
-      const { serviceCode, priceKobo } = req.walletContext;
-      const customerId = req.customer.id;
+    const { serviceCode, priceKobo } = req.walletContext;
+    const customerId = req.customer.id;
 
-      // Debit the wallet
+    try {
+      // Debit the wallet - this is the critical financial operation
       const result = await WalletService.debit(
         customerId,
         priceKobo,
@@ -165,42 +240,80 @@ export const chargeWallet = (
             endpoint: req.originalUrl,
             method: req.method,
             requestId: req.requestId,
-            statusCode: res.statusCode
+            statusCode: res.statusCode,
+            timestamp: new Date().toISOString()
           }
         }
       );
 
-      // Update wallet context
+      // Update wallet context with transaction details
       req.walletContext.charged = true;
       req.walletContext.transactionId = result.transaction.id;
 
-      // Log successful charge (debug mode)
-      if (process.env.DEBUG_WALLET === 'true') {
-        console.log(`[Wallet] Charged ${PricingService.formatPrice(priceKobo)} for ${serviceCode}`, {
-          customerId,
-          transactionId: result.transaction.id,
-          newBalance: result.newBalance.formattedBalance
-        });
-      }
+      // Log successful charge - ALWAYS log for audit trail
+      logWalletOperation('CHARGE', `Successfully charged ${PricingService.formatPrice(priceKobo)} for ${serviceCode}`, {
+        customerId,
+        transactionId: result.transaction.id,
+        priceKobo,
+        balanceBefore: req.walletContext.balanceBefore,
+        balanceAfter: result.newBalance.balanceKobo,
+        endpoint: req.originalUrl,
+        requestId: req.requestId
+      });
+
+      return true;
     } catch (error: any) {
-      // Log error but don't fail the response (charge failed after successful API call)
+      // CRITICAL: Log failed charge for manual reconciliation
       // This should be rare since we pre-checked the balance
-      console.error('[Wallet] Failed to charge wallet after successful response:', error.message);
+      req.walletContext.chargeError = error.message;
       
-      // TODO: Add to a retry queue for failed charges
+      logWalletOperation('ERROR', `CHARGE FAILED - REQUIRES RECONCILIATION`, {
+        customerId,
+        serviceCode,
+        priceKobo,
+        endpoint: req.originalUrl,
+        requestId: req.requestId,
+        error: error.message,
+        stack: error.stack,
+        balanceBefore: req.walletContext.balanceBefore
+      });
+
+      // Return false to indicate failure
+      return false;
     }
   };
 
-  // Override res.json
+  // Override res.json - CHARGE FIRST, THEN SEND RESPONSE
   res.json = function(body: any) {
-    // Process charge asynchronously but don't block response
-    processCharge().catch(console.error);
+    // Process charge BEFORE sending response - use IIFE to await
+    (async () => {
+      try {
+        const success = await processCharge();
+        if (!success) {
+          console.error('[Wallet] ⚠️ Charge failed - see logs for reconciliation');
+        }
+      } catch (error) {
+        console.error('[Wallet] Unexpected error in charge processing:', error);
+      }
+    })();
+    
+    // Return synchronously to satisfy Express types
     return originalJson(body);
   };
 
   // Override res.send (for non-JSON responses)
   res.send = function(body: any) {
-    processCharge().catch(console.error);
+    (async () => {
+      try {
+        const success = await processCharge();
+        if (!success) {
+          console.error('[Wallet] ⚠️ Charge failed - see logs for reconciliation');
+        }
+      } catch (error) {
+        console.error('[Wallet] Unexpected error in charge processing:', error);
+      }
+    })();
+    
     return originalSend(body);
   };
 

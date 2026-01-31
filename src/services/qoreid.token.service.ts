@@ -55,7 +55,9 @@ export class QoreIDTokenService {
       return newToken.accessToken;
     } catch (error: any) {
       console.error('[QoreID] Error getting valid token:', error.message);
-      throw new Error(`Failed to get QoreID token: ${error.message}`);
+      const err = new Error('QoreID service error');
+      err.name = 'QoreIdServiceError';
+      throw err;
     }
   }
 
@@ -70,7 +72,9 @@ export class QoreIDTokenService {
       return newToken.accessToken;
     } catch (error: any) {
       console.error('[QoreID] Error refreshing token:', error.message);
-      throw new Error(`Failed to refresh QoreID token: ${error.message}`);
+      const err = new Error('QoreID service error');
+      err.name = 'QoreIdServiceError';
+      throw err;
     }
   }
 
@@ -104,7 +108,9 @@ export class QoreIDTokenService {
    */
   private static async fetchFreshToken(): Promise<QoreIDTokenData> {
     if (!this.CLIENT_ID || !this.SECRET) {
-      throw new Error('QoreID credentials not configured. Set QOREID_CLIENT_ID and QOREID_SECRET in environment variables.');
+      const err = new Error('QoreID not configured');
+      err.name = 'QoreIdNotConfiguredError';
+      throw err;
     }
 
     const requestBody = {
@@ -145,7 +151,9 @@ export class QoreIDTokenService {
           console.error('[QoreID] Error is not JSON, raw text:', errorText);
         }
         
-        throw new Error(`QoreID token request failed: ${response.status} ${response.statusText}`);
+        const err = new Error('QoreID authentication failed');
+        err.name = 'QoreIdAuthError';
+        throw err;
       }
 
       const responseText = await response.text();
@@ -156,7 +164,9 @@ export class QoreIDTokenService {
       // Validate response
       if (!tokenData.accessToken) {
         console.error('[QoreID] Invalid response - no accessToken:', tokenData);
-        throw new Error('QoreID API returned invalid token data');
+        const err = new Error('QoreID service error');
+        err.name = 'QoreIdServiceError';
+        throw err;
       }
 
       console.log('[QoreID] ✅ New token received successfully');

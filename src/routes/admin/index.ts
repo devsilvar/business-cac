@@ -6,6 +6,7 @@ import { registerMonitoringRoutes } from './monitoring.routes.js';
 import adminCustomersRoutes from './customers.routes.js';
 import { registerVerificationRoutes } from './verification.register.js';
 import { registerPricingRoutes } from './pricing.routes.js';
+import { adminManagementRouter } from './admin.routes.js';
 
 /**
  * ===================================================================
@@ -72,5 +73,8 @@ registerPricingRoutes(adminRouter);  // Service pricing management
 
 // Mount customer management routes at /customers
 adminRouter.use('/customers', adminCustomersRoutes);
+
+// Mount admin management routes at /management
+adminRouter.use('/management', adminManagementRouter);
 
 export default adminRouter;

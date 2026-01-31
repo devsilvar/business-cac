@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { authenticateCustomerJWT } from '../../middleware/customerJwt.middleware.js';
-import { CustomerStore } from '../../services/customerPortal.store.js';
 import { CustomerService } from '../../services/customer.service.js';
+import { database } from '../../database/index.js';
 import { http } from '../../utils/error.util.js';
 
 /**
@@ -50,30 +50,11 @@ export function registerProfileRoutes(router: Router) {
         return http.unauthorized(res, 'AUTHENTICATION_REQUIRED', 'Please login to access your profile', undefined, req);
       }
       
-      // Fetch customer details from store using JWT customerId
-      const customer = CustomerStore.findById(jwt.customerId);
+      // Fetch customer details from DATABASE (not in-memory store)
+      const customer = await database.getCustomer(jwt.customerId);
       
       if (!customer) {
         return http.unauthorized(res, 'CUSTOMER_NOT_FOUND', 'Customer account not found', undefined, req);
-      }
-      
-      // Fetch verification status from database
-      let verificationStatus = 'inactive';
-      try {
-        const dbCustomer = await CustomerService.getCustomerDetails(jwt.customerId);
-        // getCustomerDetails returns CustomerWithKeys which extends Customer
-        // So we access verificationStatus directly from dbCustomer, not dbCustomer.customer
-        if (dbCustomer) {
-          verificationStatus = dbCustomer.verificationStatus || 'inactive';
-          console.log('[Customer Profile] Fetched verification status from DB:', {
-            customerId: jwt.customerId,
-            email: dbCustomer.email,
-            verificationStatus,
-            fullCustomerObject: dbCustomer
-          });
-        }
-      } catch (e) {
-        console.error('[Customer Profile] Failed to fetch verification status:', e);
       }
       
       // Return customer profile (password hash excluded)
@@ -81,24 +62,15 @@ export function registerProfileRoutes(router: Router) {
         id: customer.id,
         email: customer.email,
         company: customer.company || null,
-        phoneNumber: customer.phoneNumber || null,
-        plan: customer.walletBalance || 'basic',
+        fullName: customer.full_name || null,
+        phoneNumber: customer.phone_number || null,
+        walletBalance: customer.walletBalance || 0,
         status: customer.status || 'active',
-        verificationStatus,
+        verificationStatus: customer.verificationStatus || 'inactive',
         createdAt: customer.createdAt || new Date().toISOString(),
-        lastLogin: customer.lastLogin || null
       }, req);
     } catch (e: any) {
-      // Concise error logging (no large payloads)
-      if (process.env.LOG_LEVEL === 'error') {
-        console.error('[Customer Profile] Error:', {
-          errorCode: e.code || 'UNKNOWN',
-          message: e.message,
-          customerId: (req as any).customer?.id,
-          requestId: req.requestId,
-        });
-      }
-      
+      console.error('[Customer Profile] Error fetching profile:', e.message);
       return http.serverError(res, 'PROFILE_FETCH_FAILED', 'Failed to retrieve profile', undefined, req);
     }
   });
@@ -110,21 +82,22 @@ export function registerProfileRoutes(router: Router) {
    * 
    * Allowed updates (customer-managed):
    * - company
-   * - phoneNumber
+   * - full_name
+   * - phone_number
    */
-  router.put('/me', authenticateCustomerJWT, (req: Request, res: Response) => {
+  router.put('/me', authenticateCustomerJWT, async (req: Request, res: Response) => {
     try {
       const jwt = (req as any).customerJwt;
       if (!jwt || !jwt.customerId) {
         return http.unauthorized(res, 'AUTHENTICATION_REQUIRED', 'Please login to update your profile', undefined, req);
       }
 
-      const existing = CustomerStore.findById(jwt.customerId);
+      const existing = await database.getCustomer(jwt.customerId);
       if (!existing) {
         return http.unauthorized(res, 'CUSTOMER_NOT_FOUND', 'Customer account not found', undefined, req);
       }
 
-      const { company, phoneNumber } = req.body || {};
+      const { company, fullName, phoneNumber } = req.body || {};
 
       // Validate company (optional)
       let companyValue: string | undefined = undefined;
@@ -137,6 +110,19 @@ export function registerProfileRoutes(router: Router) {
           return http.badRequest(res, 'INVALID_COMPANY', 'Company name must be 120 characters or less', undefined, req);
         }
         companyValue = c.length ? c : undefined;
+      }
+
+      // Validate fullName (optional)
+      let fullNameValue: string | undefined = undefined;
+      if (fullName !== undefined) {
+        const c = String(fullName).trim();
+        if (c.length > 0 && c.length < 2) {
+          return http.badRequest(res, 'INVALID_NAME', 'Full name must be at least 2 characters', undefined, req);
+        }
+        if (c.length > 120) {
+          return http.badRequest(res, 'INVALID_NAME', 'Full name must be 120 characters or less', undefined, req);
+        }
+        fullNameValue = c.length ? c : undefined;
       }
 
       // Validate phone number (optional)
@@ -154,10 +140,14 @@ export function registerProfileRoutes(router: Router) {
         }
       }
 
-      const updated = CustomerStore.update(jwt.customerId, {
-        ...(company !== undefined ? { company: companyValue } : {}),
-        ...(phoneNumber !== undefined ? { phoneNumber: phoneValue } : {}),
-      });
+      // Build update object with correct field names
+      const updates: any = {};
+      if (company !== undefined) updates.company = companyValue;
+      if (fullName !== undefined) updates.full_name = fullNameValue;
+      if (phoneNumber !== undefined) updates.phone_number = phoneValue;
+
+      // Update customer in database
+      const updated = await database.updateCustomer(jwt.customerId, updates);
 
       if (!updated) {
         return http.serverError(res, 'PROFILE_UPDATE_FAILED', 'Failed to update profile', undefined, req);
@@ -167,13 +157,15 @@ export function registerProfileRoutes(router: Router) {
         id: updated.id,
         email: updated.email,
         company: updated.company || null,
-        phoneNumber: updated.phoneNumber || null,
-        plan: updated.walletBalance || 'basic',
+        fullName: updated.full_name || null,
+        phoneNumber: updated.phone_number || null,
+        walletBalance: updated.walletBalance || 0,
         status: updated.status || 'active',
+        verificationStatus: updated.verificationStatus || 'inactive',
         createdAt: updated.createdAt || new Date().toISOString(),
-        lastLogin: updated.lastLogin || null
       }, req);
     } catch (e: any) {
+      console.error('[Customer Profile] Error updating profile:', e.message);
       return http.serverError(res, 'PROFILE_UPDATE_FAILED', e?.message || 'Failed to update profile', undefined, req);
     }
   });

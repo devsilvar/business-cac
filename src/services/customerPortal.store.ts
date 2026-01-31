@@ -33,21 +33,31 @@ class InMemoryCustomerStore {
   private customers: CustomerRecord[] = []
 
   constructor() {
-    // seed one test customer (dev only)
-    const password = 'CustomerPass123!'
-    const hash = bcrypt.hashSync(password, 10)
-    this.customers.push({
-      id: 'cust_001',
-      email: 'customer@example.com',
-      passwordHash: hash,
-      company: 'Customer Co',
-      phoneNumber: '08012345678',
-      walletBalance: 1000000,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      apiKeys: [],
-      usage: {}
-    })
+    // Seed test customer ONLY in development environment with secure password
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === undefined) {
+      // Use environment variable for password or generate secure random password
+      const devPassword = process.env.DEV_CUSTOMER_PASSWORD || this.generateSecurePassword();
+      const hash = bcrypt.hashSync(devPassword, 10);
+      
+      // Log the development credentials for developers (only in development)
+      console.warn(`[DEV] Development customer account created:`);
+      console.warn(`[DEV] Email: customer@example.com`);
+      console.warn(`[DEV] Password: ${devPassword}`);
+      console.warn(`[DEV] This will only be shown in development mode`);
+      
+      this.customers.push({
+        id: 'cust_001',
+        email: 'customer@example.com',
+        passwordHash: hash,
+        company: 'Customer Co',
+        phoneNumber: '08012345678',
+        walletBalance: 1000000,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        apiKeys: [],
+        usage: {}
+      })
+    }
   }
 
   /** Create a new portal customer, enforcing email uniqueness. Password should be pre-hashed. */
@@ -134,6 +144,19 @@ class InMemoryCustomerStore {
   private generateKey() {
     // simple dev key
     return 'ck_' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  }
+
+  /**
+   * Generate a secure random password for development
+   * 16 characters with mixed case, numbers, and symbols
+   */
+  private generateSecurePassword(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
   }
 }
 

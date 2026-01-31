@@ -166,18 +166,53 @@ export class PricingService {
   /**
    * Map endpoint path to service code
    * e.g., '/api/v1/business/name-search' -> 'name-search'
+   * e.g., '/api/v1/business/identity/passport-verification/A123' -> 'passport-verification'
    */
   static getServiceCodeFromEndpoint(endpoint: string): string | null {
-    // Extract the last segment of the path (service name)
-    const segments = endpoint.split('/').filter(Boolean);
+    // Remove query string if present
+    const pathOnly = endpoint.split('?')[0];
+    const segments = pathOnly.split('/').filter(Boolean);
     
-    // Look for business routes
+    // Known service codes from pricing
+    const knownServiceCodes = [
+      'name-search',
+      'name-registration',
+      'company-registration',
+      'drivers-license-verification',
+      'passport-verification',
+      'voters-card-verification',
+      'passport-face-verification',
+      'bvn-basic'
+    ];
+    
+    // Check if any segment matches a known service code
+    for (const segment of segments) {
+      if (knownServiceCodes.includes(segment)) {
+        return segment;
+      }
+    }
+    
+    // Fallback: Look for business routes pattern
     const businessIndex = segments.indexOf('business');
     if (businessIndex !== -1 && segments.length > businessIndex + 1) {
-      return segments[businessIndex + 1];
+      // Skip 'identity' if present and get the actual service
+      const nextSegment = segments[businessIndex + 1];
+      if (nextSegment === 'identity' && segments.length > businessIndex + 2) {
+        return segments[businessIndex + 2];
+      }
+      return nextSegment;
     }
 
-    // Fallback: use the last segment
+    // Last fallback: use the second-to-last segment (before any ID params)
+    if (segments.length >= 2) {
+      const lastSegment = segments[segments.length - 1];
+      // If last segment looks like an ID (contains numbers), use second-to-last
+      if (/[0-9]/.test(lastSegment)) {
+        return segments[segments.length - 2];
+      }
+      return lastSegment;
+    }
+
     return segments[segments.length - 1] || null;
   }
 

@@ -28,7 +28,7 @@ const router = Router();
 router.get(
   '/',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_customers'),
   async (req: Request, res: Response) => {
     try {
       const {
@@ -143,7 +143,7 @@ router.post(
 router.get(
   '/:customerId',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_customers'),
   async (req: Request, res: Response) => {
     try {
       const { customerId } = req.params;
@@ -347,7 +347,7 @@ router.post(
 router.get(
   '/api-keys',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_api_keys'),
   async (req: Request, res: Response) => {
     try {
       // Get filters from query params
@@ -402,7 +402,7 @@ router.get(
 router.get(
   '/:customerId/keys',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_api_keys'),
   async (req: Request, res: Response) => {
     try {
       const { customerId } = req.params;
@@ -539,7 +539,7 @@ router.post(
 router.get(
   '/wallet/transactions',
   requireAdminAuth,
-  requireAdminPermission('view_all'),
+  requireAdminPermission('view_wallet_transactions'),
   async (req: Request, res: Response) => {
     try {
     const { limit = '50', offset = '0', type = 'all', startDate, endDate } = req.query;

@@ -8,7 +8,10 @@ import { HttpStatus } from '../types/index.js';
 
 // Configuration for JWT (optional)
 // TODO(rovodev): consolidate JWT config into a shared util; standardize exp=15-60m and claims
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set. Add it to your .env file.')
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const API_KEY_HEADER = process.env.API_KEY_HEADER || 'x-api-key';
 

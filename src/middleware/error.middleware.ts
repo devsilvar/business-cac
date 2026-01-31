@@ -1,10 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ApiError, sendError } from '../utils/error.util.js';
+import { sanitizeError, sanitizeErrorDetails } from '../utils/errorSanitizer.util.js';
 import config from '../config/index.js';
 
 /**
  * Global error handling middleware
  * Handles ApiError instances and converts unknown errors to standardized format
+ * All errors are sanitized to prevent exposing sensitive information
  */
 export const errorHandler = (
   error: Error,
@@ -17,9 +19,29 @@ export const errorHandler = (
     return next(error);
   }
 
-  // Handle our ApiError instances
+  // Log the error for debugging (only in development or when logging is enabled)
+  if (process.env.NODE_ENV === 'development' || process.env.LOG_LEVEL === 'error') {
+    console.error('[ERROR] Unhandled error:', {
+      name: error.name,
+      message: error.message,
+      stack: config.isDevelopment ? error.stack : undefined,
+      statusCode: (error as any).statusCode,
+    });
+  }
+
+  // Handle our ApiError instances with sanitization
   if (error instanceof ApiError) {
-    error.send(res, req);
+    const sanitized = sanitizeError(error, config.isDevelopment);
+    const details = sanitizeErrorDetails(error.details, config.isDevelopment);
+    
+    sendError(
+      res,
+      sanitized.code,
+      config.isProduction ? sanitized.userMessage : sanitized.message,
+      error.statusCode,
+      details,
+      req
+    );
     return;
   }
 
@@ -36,18 +58,15 @@ export const errorHandler = (
     return;
   }
 
-  // Handle unknown errors - only log in development or when explicitly enabled
-  if (process.env.NODE_ENV === 'development' || process.env.LOG_LEVEL === 'error') {
-    console.error('[ERROR] Unhandled error:', error);
-  }
-  
+  // Sanitize all other errors
+  const sanitized = sanitizeError(error, config.isDevelopment);
+  const statusCode = (error as any).statusCode || (sanitized.isOperational ? 400 : 500);
+
   sendError(
     res,
-    'INTERNAL_ERROR',
-    config.isProduction 
-      ? 'Internal server error' 
-      : error.message || 'Unknown error occurred',
-    500,
+    sanitized.code,
+    config.isProduction ? sanitized.userMessage : sanitized.message,
+    statusCode,
     config.isDevelopment ? { originalError: error.message, stack: error.stack } : undefined,
     req
   );

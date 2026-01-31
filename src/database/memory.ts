@@ -1,4 +1,4 @@
-import type { DatabaseInterface, CustomerData, Customer, ApiKeyData, ApiKey, UsageRecordData, UsageRecord, UsageStats, ListOptions, BusinessOverview, SystemMetrics, QoreIDToken, Admin, AdminData, WalletTransaction, WalletTransactionData, WalletTransactionStatus, ServicePricing, ServicePricingData } from './index.js'
+import type { DatabaseInterface, DatabaseTransactionInterface, CustomerData, Customer, ApiKeyData, ApiKey, UsageRecordData, UsageRecord, UsageStats, ListOptions, BusinessOverview, SystemMetrics, QoreIDToken, Admin, AdminData, WalletTransaction, WalletTransactionData, WalletTransactionStatus, ServicePricing, ServicePricingData } from './index.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -469,5 +469,115 @@ export class MemoryDatabase implements DatabaseInterface {
   async deleteServicePricing(serviceCode: string): Promise<void> {
     this.servicePricing.delete(serviceCode)
     await this.save()
+  }
+
+  // Atomic transaction implementation (using in-memory locking)
+  private transactionInProgress = false;
+
+  async transaction<T>(callback: (tx: DatabaseTransactionInterface) => Promise<T>): Promise<T> {
+    if (this.transactionInProgress) {
+      throw new Error('Transaction already in progress');
+    }
+
+    this.transactionInProgress = true;
+    
+    // Save current state for rollback
+    const customersBackup = new Map(this.customers);
+    const walletTransactionsBackup = new Map(this.walletTransactions);
+
+    try {
+      // Create transaction interface with current methods
+      const txInterface: DatabaseTransactionInterface = {
+        createCustomer: async (customer: CustomerData) => {
+          const id = 'cust_' + Math.random().toString(36).slice(2, 10);
+          const now = new Date();
+          
+          const newCustomer: Customer = {
+            id,
+            ...customer,
+            createdAt: now,
+            updatedAt: now
+          };
+          
+          this.customers.set(id, newCustomer);
+          return newCustomer;
+        },
+
+        getCustomer: async (customerId: string) => {
+          return this.customers.get(customerId) || null;
+        },
+
+        updateCustomer: async (customerId: string, updates: Partial<CustomerData>) => {
+          const customer = this.customers.get(customerId);
+          if (!customer) {
+            throw new Error('Customer not found');
+          }
+
+          const updated: Customer = {
+            ...customer,
+            ...updates,
+            updatedAt: new Date()
+          };
+          
+          this.customers.set(customerId, updated);
+          return updated;
+        },
+
+        createWalletTransaction: async (transactionData: WalletTransactionData) => {
+          const id = 'txn_' + Math.random().toString(36).slice(2, 10);
+          const now = new Date();
+          
+          const transaction: WalletTransaction = {
+            id,
+            ...transactionData,
+            createdAt: now,
+            completedAt: transactionData.status === 'completed' ? now : undefined
+          };
+          
+          this.walletTransactions.set(id, transaction);
+          return transaction;
+        },
+
+        getWalletTransaction: async (transactionId: string) => {
+          return this.walletTransactions.get(transactionId) || null;
+        },
+
+        getWalletTransactionByReference: async (reference: string) => {
+          for (const txn of this.walletTransactions.values()) {
+            if (txn.reference === reference) {
+              return txn;
+            }
+          }
+          return null;
+        },
+
+        updateWalletTransactionStatus: async (transactionId: string, status: WalletTransactionStatus, completedAt?: Date) => {
+          const transaction = this.walletTransactions.get(transactionId);
+          if (!transaction) {
+            throw new Error('Transaction not found');
+          }
+
+          const updated: WalletTransaction = {
+            ...transaction,
+            status,
+            completedAt: completedAt || (status === 'completed' ? new Date() : transaction.completedAt)
+          };
+          
+          this.walletTransactions.set(transactionId, updated);
+          return updated;
+        }
+      };
+
+      const result = await callback(txInterface);
+      await this.save(); // Save the final state
+      return result;
+    } catch (error) {
+      // Rollback by restoring backups
+      this.customers = customersBackup;
+      this.walletTransactions = walletTransactionsBackup;
+      throw error;
+    } finally {
+      this.transactionInProgress = false;
+    }
   }
 }

@@ -5,6 +5,7 @@
 
 import { 
   DatabaseInterface, 
+  DatabaseTransactionInterface,
   Customer, 
   CustomerData, 
   ApiKey, 
@@ -86,7 +87,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
         status VARCHAR(50) DEFAULT 'active',
         verification_status VARCHAR(50) DEFAULT 'inactive',
         verification_data JSONB,
-        stripe_customer_id VARCHAR(255),
+        paystack_customer_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )`,
@@ -246,7 +247,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
 
     const id = this.generateUUID();
     const query = `
-      INSERT INTO customers (id, email, company, password_hash, reset_token_hash, reset_token_expires, wallet_balance, status, verification_status, verification_data, stripe_customer_id)
+      INSERT INTO customers (id, email, company, password_hash, reset_token_hash, reset_token_expires, wallet_balance, status, verification_status, verification_data, paystack_customer_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
@@ -262,7 +263,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       customerData.status,
       customerData.verificationStatus || 'inactive',
       customerData.verificationData ? JSON.stringify(customerData.verificationData) : null,
-      customerData.stripeCustomerId || null
+      customerData.paystackCustomerId || null
     ];
 
     const result: QueryResult = await pool.query(query, values);
@@ -279,7 +280,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -307,7 +308,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -335,7 +336,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -363,7 +364,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -404,7 +405,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -472,7 +473,7 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       resetTokenExpires: row.reset_token_expires,
       verificationStatus: row.verification_status || 'inactive',
       verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
-      stripeCustomerId: row.stripe_customer_id,
+      paystackCustomerId: row.paystack_customer_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
@@ -564,9 +565,65 @@ export class PostgreSQLDatabase implements DatabaseInterface {
   }
 
   async updateApiKey(keyId: string, updates: Partial<ApiKeyData>): Promise<ApiKey> {
-    // Implementation similar to updateCustomer
-    // ... (truncated for brevity)
-    throw new Error('updateApiKey not implemented for PostgreSQL');
+    if (!pool) {
+      throw new Error('Database not initialized');
+    }
+
+    const updateFields: string[] = [];
+    const values: any[] = [keyId];
+    let valueIndex = 2;
+
+    if (updates.name !== undefined) {
+      updateFields.push(`name = $${valueIndex++}`);
+      values.push(updates.name);
+    }
+    if (updates.permissions !== undefined) {
+      updateFields.push(`permissions = $${valueIndex++}`);
+      values.push(JSON.stringify(updates.permissions));
+    }
+    if (updates.status !== undefined) {
+      updateFields.push(`status = $${valueIndex++}`);
+      values.push(updates.status);
+    }
+    if (updates.requestsUsed !== undefined) {
+      updateFields.push(`requests_used = $${valueIndex++}`);
+      values.push(updates.requestsUsed);
+    }
+    if (updates.rateLimitPerMin !== undefined) {
+      updateFields.push(`rate_limit_per_min = $${valueIndex++}`);
+      values.push(updates.rateLimitPerMin);
+    }
+    if ((updates as any).lastUsed !== undefined) {
+      updateFields.push(`last_used = $${valueIndex++}`);
+      values.push((updates as any).lastUsed);
+    }
+    if (updates.expiresAt !== undefined) {
+      updateFields.push(`expires_at = $${valueIndex++}`);
+      values.push(updates.expiresAt);
+    }
+
+    if (updateFields.length === 0) {
+      const existing = await this.getApiKey(keyId);
+      if (!existing) throw new Error('API key not found');
+      return existing;
+    }
+
+    updateFields.push('updated_at = NOW()');
+
+    const query = `
+      UPDATE api_keys 
+      SET ${updateFields.join(', ')}
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result: QueryResult = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      throw new Error('API key not found');
+    }
+
+    return this.mapApiKeyRow(result.rows[0]);
   }
 
   async deleteApiKey(keyId: string): Promise<void> {
@@ -1214,6 +1271,28 @@ export class PostgreSQLDatabase implements DatabaseInterface {
     return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
   }
 
+  private mapCustomerRow(row: any): Customer {
+    return {
+      id: row.id,
+      email: row.email,
+      company: row.company,
+      walletBalance: Number(row.wallet_balance),
+      status: row.status,
+      passwordHash: row.password_hash,
+      resetTokenHash: row.reset_token_hash,
+      resetTokenExpires: row.reset_token_expires,
+      phone_number: row.phone_number,
+      full_name: row.full_name,
+      nin_bvn: row.nin_bvn,
+      id_document: row.id_document,
+      verificationStatus: row.verification_status || 'inactive',
+      verificationData: row.verification_data ? (typeof row.verification_data === 'string' ? JSON.parse(row.verification_data) : row.verification_data) : undefined,
+      paystackCustomerId: row.paystack_customer_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
   private mapApiKeyRow(row: any): ApiKey {
     // Handle permissions - could be JSON string, array, or comma-separated string
     let permissions: string[] = [];
@@ -1294,6 +1373,155 @@ export class PostgreSQLDatabase implements DatabaseInterface {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  // Atomic transaction implementation
+  async transaction<T>(callback: (tx: DatabaseTransactionInterface) => Promise<T>): Promise<T> {
+    if (!pool) {
+      throw new Error('Database not initialized');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Create transaction interface with client-scoped operations
+      const txInterface: DatabaseTransactionInterface = {
+        createCustomer: async (customer: CustomerData) => {
+          const id = this.generateUUID();
+          const query = `
+            INSERT INTO customers (
+              id, email, password_hash, company, phone_number, wallet_balance, 
+              status, verification_status, verification_data, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+            RETURNING *
+          `;
+          const values = [
+            id,
+            customer.email,
+            customer.passwordHash,
+            customer.company || null,
+            customer.phone_number || null,
+            customer.walletBalance || 0,
+            customer.status || 'active',
+            customer.verificationStatus || 'inactive',
+            customer.verificationData ? JSON.stringify(customer.verificationData) : null
+          ];
+          const result = await client.query(query, values);
+          return this.mapCustomerRow(result.rows[0]);
+        },
+
+        getCustomer: async (customerId: string) => {
+          const result = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
+          return result.rows.length > 0 ? this.mapCustomerRow(result.rows[0]) : null;
+        },
+
+        updateCustomer: async (customerId: string, updates: Partial<CustomerData>) => {
+          const updateFields: string[] = [];
+          const values: any[] = [customerId];
+          let valueIndex = 2;
+
+          for (const [key, value] of Object.entries(updates)) {
+            if (value !== undefined) {
+              updateFields.push(`${this.camelToSnake(key)} = $${valueIndex++}`);
+              if (key === 'verificationData') {
+                values.push(JSON.stringify(value));
+              } else {
+                values.push(value);
+              }
+            }
+          }
+
+          if (updateFields.length === 0) {
+            const existing = await this.getCustomer(customerId);
+            if (!existing) throw new Error('Customer not found');
+            return existing;
+          }
+
+          updateFields.push('updated_at = NOW()');
+
+          const query = `
+            UPDATE customers
+            SET ${updateFields.join(', ')}
+            WHERE id = $1
+            RETURNING *
+          `;
+
+          const result = await client.query(query, values);
+          if (result.rows.length === 0) {
+            throw new Error('Customer not found');
+          }
+
+          return this.mapCustomerRow(result.rows[0]);
+        },
+
+        createWalletTransaction: async (transactionData: WalletTransactionData) => {
+          const id = this.generateUUID();
+          const query = `
+            INSERT INTO wallet_transactions (
+              id, customer_id, type, amount, balance_before, balance_after, 
+              description, reference, usage_record_id, payment_method, status, metadata, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            RETURNING *
+          `;
+
+          const values = [
+            id,
+            transactionData.customerId,
+            transactionData.type,
+            transactionData.amount,
+            transactionData.balanceBefore,
+            transactionData.balanceAfter,
+            transactionData.description,
+            transactionData.reference,
+            transactionData.usageRecordId || null,
+            transactionData.paymentMethod || null,
+            transactionData.status,
+            transactionData.metadata ? JSON.stringify(transactionData.metadata) : null
+          ];
+
+          const result = await client.query(query, values);
+          return this.mapWalletTransactionRow(result.rows[0]);
+        },
+
+        getWalletTransaction: async (transactionId: string) => {
+          const result = await client.query('SELECT * FROM wallet_transactions WHERE id = $1', [transactionId]);
+          return result.rows.length > 0 ? this.mapWalletTransactionRow(result.rows[0]) : null;
+        },
+
+        getWalletTransactionByReference: async (reference: string) => {
+          const result = await client.query('SELECT * FROM wallet_transactions WHERE reference = $1', [reference]);
+          return result.rows.length > 0 ? this.mapWalletTransactionRow(result.rows[0]) : null;
+        },
+
+        updateWalletTransactionStatus: async (transactionId: string, status: WalletTransactionStatus, completedAt?: Date) => {
+          const query = `
+            UPDATE wallet_transactions
+            SET status = $1, completed_at = $2
+            WHERE id = $3
+            RETURNING *
+          `;
+
+          const result = await client.query(query, [transactionId, status, completedAt || null]);
+          if (result.rows.length === 0) {
+            throw new Error('Transaction not found');
+          }
+
+          return this.mapWalletTransactionRow(result.rows[0]);
+        }
+      };
+
+      const result = await callback(txInterface);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

@@ -122,7 +122,9 @@ export class CustomerService {
     // Check if customer already exists
     const existingCustomer = await database.getCustomerByEmail(customerData.email);
     if (existingCustomer) {
-      throw new Error('Customer with this email already exists');
+      const error = new Error('Customer already exists');
+      error.name = 'CustomerExistsError';
+      throw error;
     }
 
     // Pay-per-use: no plan validation
@@ -150,7 +152,9 @@ export class CustomerService {
     // Verify customer exists
     const customer = await database.getCustomer(request.customerId);
     if (!customer) {
-      throw new Error('Customer not found');
+      const error = new Error('Customer not found');
+      error.name = 'CustomerNotFoundError';
+      throw error;
     }
 
     // Generate random API key (ck_ prefix for customer keys)
@@ -223,7 +227,9 @@ export class CustomerService {
   static async getCustomerDetails(customerId: string): Promise<CustomerWithKeys> {
     const customer = await database.getCustomer(customerId);
     if (!customer) {
-      throw new Error('Customer not found');
+      const error = new Error('Customer not found');
+      error.name = 'CustomerNotFoundError';
+      throw error;
     }
 
     const apiKeys = await database.listApiKeys(customerId);
@@ -263,7 +269,9 @@ export class CustomerService {
   static async updateCustomer(customerId: string, updates: Partial<CustomerData>): Promise<Customer> {
     const customer = await database.getCustomer(customerId);
     if (!customer) {
-      throw new Error('Customer not found');
+      const error = new Error('Customer not found');
+      error.name = 'CustomerNotFoundError';
+      throw error;
     }
 
     // Pay-per-use: no plan updates
@@ -277,7 +285,9 @@ export class CustomerService {
   static async suspendCustomer(customerId: string, reason?: string): Promise<void> {
     const customer = await database.getCustomer(customerId);
     if (!customer) {
-      throw new Error('Customer not found');
+      const error = new Error('Customer not found');
+      error.name = 'CustomerNotFoundError';
+      throw error;
     }
 
     // Update customer status
@@ -298,7 +308,9 @@ export class CustomerService {
   static async activateCustomer(customerId: string): Promise<void> {
     const customer = await database.getCustomer(customerId);
     if (!customer) {
-      throw new Error('Customer not found');
+      const error = new Error('Customer not found');
+      error.name = 'CustomerNotFoundError';
+      throw error;
     }
 
     // Update customer status
@@ -319,7 +331,9 @@ export class CustomerService {
   static async revokeApiKey(keyId: string): Promise<void> {
     const apiKey = await database.getApiKey(keyId);
     if (!apiKey) {
-      throw new Error('API key not found');
+      const error = new Error('API key not found');
+      error.name = 'ApiKeyNotFoundError';
+      throw error;
     }
 
     await database.updateApiKey(keyId, { status: 'revoked' });

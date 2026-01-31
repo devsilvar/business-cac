@@ -89,7 +89,8 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public statusCode: number = 400,
-    public details?: any
+    public details?: any,
+    public userMessage?: string
   ) {
     super(message);
     this.name = 'ApiError';
@@ -98,6 +99,7 @@ export class ApiError extends Error {
 
   /**
    * Send this error as a response
+   * Note: Error sanitization is handled by the error middleware
    */
   send(res: Response, req?: Request | { requestId?: string }): Response {
     return sendError(res, this.code, this.message, this.statusCode, this.details, req);

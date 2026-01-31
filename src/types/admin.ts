@@ -63,7 +63,7 @@ export interface SystemStatus {
   services: {
     database: 'connected' | 'disconnected' | 'unknown';
     documentsApi: 'connected' | 'disconnected' | 'unknown';
-    stripe: 'connected' | 'disconnected' | 'unknown';
+    paystack: 'connected' | 'disconnected' | 'unknown';
   };
 }
 

@@ -116,7 +116,8 @@ export class PaystackServiceError extends Error {
   public readonly statusCode: number;
 
   constructor(message: string, code: string, statusCode: number = 400) {
-    super(message);
+    // Keep message simple - sanitizer will handle user-friendly messaging
+    super('Payment service error');
     this.name = 'PaystackServiceError';
     this.code = code;
     this.statusCode = statusCode;

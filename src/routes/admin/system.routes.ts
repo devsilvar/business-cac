@@ -88,10 +88,10 @@ export function registerSystemRoutes(router: Router) {
    * - 403 FORBIDDEN: Insufficient permissions
    * - 500 ADMIN_CREATE_FAILED: Failed to create admin
    */
-  router.post(
+router.post(
     '/admins',
     requireAdminAuth,
-    requireAdminPermission('manage_system'),
+    requireAdminPermission('create_admins'),
     async (req: Request, res: Response) => {
       try {
         const { email, password, role = 'admin', permissions = [] } = req.body || {};

@@ -211,7 +211,7 @@ router.get(
         services: {
           database: 'connected', // TODO: Check actual database connection
           documentsApi: 'unknown', // TODO: Check Documents.com.ng API health
-          stripe: 'unknown' // TODO: Check Stripe API health
+          paystack: 'unknown' // TODO: Check Paystack API health
         }
       };
 
