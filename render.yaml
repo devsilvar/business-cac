@@ -1,0 +1,28 @@
+services:
+  # Web Service (Backend API) - Using existing Neon PostgreSQL
+  - type: web
+    name: business-backend
+    runtime: node
+    plan: free
+    env: node
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    
+    # Environment variables (configure these in Render dashboard)
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_TYPE
+        value: postgresql
+      # Set this in Render dashboard with your Neon connection string
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@yourcompany.com
+      - key: ADMIN_PASSWORD
+        generateValue: true

@@ -140,6 +140,16 @@ app.get("/health", (req: Request, res: Response) => {
   return res.status(200).json(healthCheck);
 });
 
+app.get("/api/v1/health", (req: Request, res: Response) => {
+  const healthCheck = {
+    status: "ok",
+    message: "API is running",
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+  };
+  return res.status(200).json(healthCheck);
+});
+
 
 // --- Initialize Admin User (on startup) ---
 initializeAdminUser().catch(console.error);
