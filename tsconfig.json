@@ -8,7 +8,7 @@
     // See also https://aka.ms/tsconfig/module
     "target": "ES2020",
     "module": "CommonJS",
-    "types": [],
+    "types": ["node"],
     // Other Outputs
     "sourceMap": true,
     "declaration": true,
